@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 虚拟环境
+.venv/
+venv/
+
+# 测试/类型检查产物
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# 本地数据库与运行日志
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# 编辑器/系统
+.idea/
+.vscode/
+.DS_Store

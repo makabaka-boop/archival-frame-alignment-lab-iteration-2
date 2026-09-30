@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lcs
+      POSTGRES_PASSWORD: lcs
+      POSTGRES_DB: lcs
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lcs -d lcs"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      API_PORT: "8000"
+      DATABASE_URL: postgresql+psycopg://lcs:lcs@db:5432/lcs
+    ports:
+      # 由 API_PORT 对外暴露服务；未设置时默认 8000。
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # 验收服务：对真实运行中的 API 与 PostgreSQL 跑 pytest。
+  # docker compose up --build 时随栈启动并在最后输出验收结论。
+  verify:
+    build:
+      context: .
+      dockerfile: Dockerfile.verify
+    depends_on:
+      api:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api:8000
+      DATABASE_URL: postgresql+psycopg://lcs:lcs@db:5432/lcs
+      PG_DSN: postgresql://lcs:lcs@db:5432/lcs
+    command: ["pytest", "-v"]
+
+volumes:
+  pgdata:
