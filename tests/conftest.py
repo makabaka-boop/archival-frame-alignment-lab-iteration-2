@@ -42,6 +42,41 @@ def set_anchors(client: httpx.Client, job_id: str, anchors: list[list[int]]) -> 
     return client.put(f"/api/jobs/{job_id}/anchors", json={"anchors": anchors})
 
 
+def set_forbidden(
+    client: httpx.Client,
+    job_id: str,
+    forbidden: list[list[int]],
+    base_version: int | None = None,
+    key: str | None = None,
+) -> httpx.Response:
+    payload: dict = {"forbidden_pairs": forbidden}
+    if base_version is not None:
+        payload["base_version"] = base_version
+    headers = {"Idempotency-Key": key} if key is not None else {}
+    return client.put(
+        f"/api/jobs/{job_id}/forbidden-pairs", json=payload, headers=headers
+    )
+
+
+def put_anchors(
+    client: httpx.Client,
+    job_id: str,
+    anchors: list[list[int]],
+    base_version: int | None = None,
+    key: str | None = None,
+) -> httpx.Response:
+    """带版本/幂等头的锚点替换（与 set_anchors 的无头快捷版互补）。"""
+    payload: dict = {"anchors": anchors}
+    if base_version is not None:
+        payload["base_version"] = base_version
+    headers = {"Idempotency-Key": key} if key is not None else {}
+    return client.put(f"/api/jobs/{job_id}/anchors", json=payload, headers=headers)
+
+
+def forbidden_pairs(body: dict) -> list[tuple[int, int]]:
+    return [(p["left_index"], p["right_index"]) for p in body["forbidden_pairs"]]
+
+
 def assert_chain_valid(body: dict, left: list[str], right: list[str]) -> list[tuple[int, int]]:
     """通用合法断言：严格递增、指纹相等。"""
     pairs = [(p["left_index"], p["right_index"]) for p in body["result"]]
