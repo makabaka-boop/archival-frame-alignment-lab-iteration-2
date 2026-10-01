@@ -32,6 +32,8 @@ class Job(Base):
     left_data: Mapped[list] = mapped_column("left_data", JSON, nullable=False)
     right_data: Mapped[list] = mapped_column("right_data", JSON, nullable=False)
     anchors: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # 禁止对应对：人工确认误配、不得进入结果的索引对集合（规范化排序落库）。
+    forbidden: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     result: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     # 乐观并发令牌：创建为 0，每次成功替换锚点 +1。
     # 过期或并发落败的请求据此被唯一裁决，不得改变任何状态。
@@ -90,6 +92,13 @@ def init_db() -> None:
         conn.execute(text("ALTER TABLE jobs ALTER COLUMN updated_at SET NOT NULL"))
         conn.execute(
             text("ALTER TABLE jobs ALTER COLUMN updated_at SET DEFAULT CURRENT_TIMESTAMP")
+        )
+        # 既有 jobs 表（无禁止对应对列的旧库）就地升级：旧作业按空禁止集合读取。
+        conn.execute(
+            text(
+                "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS forbidden "
+                "JSON NOT NULL DEFAULT '[]'::json"
+            )
         )
 
 

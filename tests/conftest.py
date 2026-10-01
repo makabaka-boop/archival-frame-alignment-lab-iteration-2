@@ -38,8 +38,32 @@ def create_job(client: httpx.Client, left: list[str], right: list[str]) -> dict:
     return resp.json()
 
 
-def set_anchors(client: httpx.Client, job_id: str, anchors: list[list[int]]) -> httpx.Response:
-    return client.put(f"/api/jobs/{job_id}/anchors", json={"anchors": anchors})
+def set_anchors(
+    client: httpx.Client,
+    job_id: str,
+    anchors: list[list[int]],
+    base_version: int | None = None,
+    key: str | None = None,
+) -> httpx.Response:
+    payload: dict = {"anchors": anchors}
+    if base_version is not None:
+        payload["base_version"] = base_version
+    headers = {"Idempotency-Key": key} if key is not None else {}
+    return client.put(f"/api/jobs/{job_id}/anchors", json=payload, headers=headers)
+
+
+def set_forbidden(
+    client: httpx.Client,
+    job_id: str,
+    forbidden: list[list[int]],
+    base_version: int | None = None,
+    key: str | None = None,
+) -> httpx.Response:
+    payload: dict = {"forbidden": forbidden}
+    if base_version is not None:
+        payload["base_version"] = base_version
+    headers = {"Idempotency-Key": key} if key is not None else {}
+    return client.put(f"/api/jobs/{job_id}/forbidden", json=payload, headers=headers)
 
 
 def assert_chain_valid(body: dict, left: list[str], right: list[str]) -> list[tuple[int, int]]:

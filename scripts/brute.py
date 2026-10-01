@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import Sequence
 
 
-def _brute_segment(left, right, lo_i, hi_i, lo_j, hi_j):
+def _brute_segment(left, right, lo_i, hi_i, lo_j, hi_j, forbidden):
     # dp[(i,j)] = 该点之后（不含）的最大链长；从后往前枚举。
     matches = [
         (i, j)
         for i in range(lo_i, hi_i)
         for j in range(lo_j, hi_j)
-        if left[i] == right[j]
+        if left[i] == right[j] and (i, j) not in forbidden
     ]
     matches.sort()  # 升序；(i,j) 全序
     dp = {pair: 1 for pair in matches}
@@ -48,17 +48,22 @@ def _brute_segment(left, right, lo_i, hi_i, lo_j, hi_j):
     return result
 
 
-def brute(left: Sequence[str], right: Sequence[str], anchors=()) -> list[tuple[int, int]]:
+def brute(
+    left: Sequence[str], right: Sequence[str], anchors=(), forbidden=()
+) -> list[tuple[int, int]]:
+    forbidden_set = {tuple(p) for p in forbidden}
     ordered = sorted(tuple(a) for a in anchors)
     result: list[tuple[int, int]] = []
     prev_i, prev_j = -1, -1
     for i, j in ordered:
         result.extend(
-            _brute_segment(left, right, prev_i + 1, i, prev_j + 1, j)
+            _brute_segment(left, right, prev_i + 1, i, prev_j + 1, j, forbidden_set)
         )
         result.append((i, j))
         prev_i, prev_j = i, j
     result.extend(
-        _brute_segment(left, right, prev_i + 1, len(left), prev_j + 1, len(right))
+        _brute_segment(
+            left, right, prev_i + 1, len(left), prev_j + 1, len(right), forbidden_set
+        )
     )
     return result

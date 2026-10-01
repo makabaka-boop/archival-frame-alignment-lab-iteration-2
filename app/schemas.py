@@ -37,6 +37,26 @@ class AnchorIn(BaseModel):
         return [] if value is None else value
 
 
+class ForbiddenIn(BaseModel):
+    forbidden: list[tuple[int, int]] = Field(
+        default_factory=list,
+        description="禁止对应对索引对集合；空数组（或缺省）表示清空禁止集合",
+    )
+    base_version: int | None = Field(
+        default=None,
+        description=(
+            "本次修改所基于的作业版本（取自最近一次 GET/PUT 响应的 version）；"
+            "与当前版本不一致时返回 409 且状态不变，缺省时不做该检查"
+        ),
+    )
+
+    @field_validator("forbidden", mode="before")
+    @classmethod
+    def _none_becomes_empty(cls, value: object) -> object:
+        # 允许 {"forbidden": null}，等价于清空。
+        return [] if value is None else value
+
+
 class Pair(BaseModel):
     left_index: int
     right_index: int
@@ -47,6 +67,7 @@ class JobOut(BaseModel):
     left: list[str]
     right: list[str]
     anchors: list[Pair]
+    forbidden: list[Pair]
     result: list[Pair]
     length: int
     version: int

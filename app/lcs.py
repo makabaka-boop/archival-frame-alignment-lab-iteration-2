@@ -11,7 +11,8 @@
 
 设 K 为相等指纹的索引对总数（K <= 80000）。算法把 LCS 归约为二维点列上的
 最长链（LIS），用 Fenwick 树求后缀最大值，整体 O(K log K)；锚点把索引平面
-切成互不相交的矩形段，逐段独立求解，复杂度不变。
+切成互不相交的矩形段，逐段独立求解，复杂度不变。禁止对应对（人工确认的
+误配）在收集相等对时直接剔除，绝不进入候选点列，也不改变复杂度。
 """
 
 from __future__ import annotations
@@ -21,8 +22,49 @@ from collections import defaultdict
 from typing import Sequence
 
 
-class AnchorError(ValueError):
-    """锚点不合法。消息可直接返回给调用方。"""
+class ConstraintError(ValueError):
+    """约束（锚点或禁止对应对）不合法。消息可直接返回给调用方。"""
+
+
+class AnchorError(ConstraintError):
+    """锚点不合法。"""
+
+
+class ForbiddenError(ConstraintError):
+    """禁止对应对不合法。"""
+
+
+def _validate_pairs(
+    left: Sequence[str],
+    right: Sequence[str],
+    pairs: Sequence[tuple[int, int]],
+    *,
+    what: str,
+    error: type[ConstraintError],
+) -> list[tuple[int, int]]:
+    """校验索引对集合的公共部分并返回 ``(i, j)`` 元组列表。
+
+    接口、算法与存储层共享同一规范化索引身份：每对必须是
+    ``[左索引, 右索引]`` 整数对、索引落在各自数组范围内、两侧指纹相等。
+    """
+    n_left, n_right = len(left), len(right)
+    normalized: list[tuple[int, int]] = []
+    for pos, pair in enumerate(pairs):
+        if (
+            not isinstance(pair, (list, tuple))
+            or len(pair) != 2
+            or not all(isinstance(v, int) and not isinstance(v, bool) for v in pair)
+        ):
+            raise error(f"第 {pos} 个{what}不是 [左索引, 右索引] 整数对")
+        i, j = int(pair[0]), int(pair[1])
+        if not 0 <= i < n_left:
+            raise error(f"第 {pos} 个{what}左索引 {i} 超出范围 [0, {n_left - 1}]")
+        if not 0 <= j < n_right:
+            raise error(f"第 {pos} 个{what}右索引 {j} 超出范围 [0, {n_right - 1}]")
+        if left[i] != right[j]:
+            raise error(f"第 {pos} 个{what}两侧指纹不相等：({i!r}, {j!r})")
+        normalized.append((i, j))
+    return normalized
 
 
 def validate_anchors(
@@ -35,23 +77,7 @@ def validate_anchors(
     合法条件与结果条件一致：索引落在各自数组范围内、两侧指纹相等、
     左右索引各自严格递增（即不得共用索引或交叉）。
     """
-    n_left, n_right = len(left), len(right)
-    normalized: list[tuple[int, int]] = []
-    for pos, anchor in enumerate(anchors):
-        if (
-            not isinstance(anchor, (list, tuple))
-            or len(anchor) != 2
-            or not all(isinstance(v, int) and not isinstance(v, bool) for v in anchor)
-        ):
-            raise AnchorError(f"第 {pos} 个锚点不是 [左索引, 右索引] 整数对")
-        i, j = int(anchor[0]), int(anchor[1])
-        if not 0 <= i < n_left:
-            raise AnchorError(f"第 {pos} 个锚点左索引 {i} 超出范围 [0, {n_left - 1}]")
-        if not 0 <= j < n_right:
-            raise AnchorError(f"第 {pos} 个锚点右索引 {j} 超出范围 [0, {n_right - 1}]")
-        if left[i] != right[j]:
-            raise AnchorError(f"第 {pos} 个锚点两侧指纹不相等：({i!r}, {j!r})")
-        normalized.append((i, j))
+    normalized = _validate_pairs(left, right, anchors, what="锚点", error=AnchorError)
 
     ordered = sorted(normalized)
     prev_i = prev_j = -1
@@ -63,6 +89,21 @@ def validate_anchors(
             )
         prev_i, prev_j = i, j
     return ordered
+
+
+def validate_forbidden(
+    left: Sequence[str],
+    right: Sequence[str],
+    pairs: Sequence[tuple[int, int]],
+) -> list[tuple[int, int]]:
+    """校验禁止对应对集合并返回规范化（按 ``(i, j)`` 排序、去重）的列表。
+
+    集合语义：元素只需合法且指纹相等，不要求递增；重复元素按集合去重。
+    """
+    normalized = _validate_pairs(
+        left, right, pairs, what="禁止对应对", error=ForbiddenError
+    )
+    return sorted(set(normalized))
 
 
 class _FenwickMax:
@@ -99,15 +140,16 @@ def _solve_segment(
     hi_i: int,
     lo_j: int,
     hi_j: int,
+    forbidden: set[tuple[int, int]],
 ) -> list[tuple[int, int]]:
     """求矩形 lo_i<=i<hi_i、lo_j<=j<hi_j 内的字典序最小最长链。
 
-    矩形边界来自锚点，保证段间索引不相交。
+    矩形边界来自锚点，保证段间索引不相交；禁止对应对不作为候选点。
     """
     if lo_i >= hi_i or lo_j >= hi_j:
         return []
 
-    # 收集段内的相等指纹对，按 (i, j) 升序；顺便压缩 j 坐标。
+    # 收集段内的相等指纹对（剔除禁止对应对），按 (i, j) 升序；顺便压缩 j 坐标。
     pairs: list[tuple[int, int]] = []
     js_used: list[int] = []
     for i in range(lo_i, hi_i):
@@ -118,6 +160,8 @@ def _solve_segment(
         stop = bisect_right(spots, hi_j - 1, start)
         for k in range(start, stop):
             j = spots[k]
+            if (i, j) in forbidden:
+                continue
             pairs.append((i, j))
             js_used.append(j)
 
@@ -181,13 +225,25 @@ def solve(
     left: Sequence[str],
     right: Sequence[str],
     anchors: Sequence[tuple[int, int]] = (),
+    forbidden: Sequence[tuple[int, int]] = (),
 ) -> list[tuple[int, int]]:
-    """求包含全部锚点的最长对应；先最长，再字典序最小。
+    """求包含全部锚点、避开全部禁止对应对的最长对应；先最长，再字典序最小。
 
-    调用前可用 :func:`validate_anchors` 校验锚点。锚点沿两条轴把平面切成
-    互不相交的矩形段，逐段取字典序最小最优解，再以锚点连接。
+    调用前可用 :func:`validate_anchors` / :func:`validate_forbidden` 校验
+    约束。锚点沿两条轴把平面切成互不相交的矩形段，逐段取字典序最小最优解，
+    再以锚点连接；禁止对应对在收集相等对时剔除，绝不进入候选点列。
+    锚点与禁止对应对相交时抛 :class:`ConstraintError`。
     """
     ordered = validate_anchors(left, right, anchors) if anchors else []
+    forbidden_set = (
+        set(validate_forbidden(left, right, forbidden)) if forbidden else set()
+    )
+    clash = set(ordered) & forbidden_set
+    if clash:
+        i, j = min(clash)
+        raise ConstraintError(
+            f"锚点与禁止对应对相交：({i}, {j}) 不能既被锚点强制包含又被禁止排除"
+        )
 
     positions_right: dict[str, list[int]] = defaultdict(list)
     for j, fp in enumerate(right):
@@ -197,7 +253,9 @@ def solve(
     prev_i, prev_j = -1, -1
     for i, j in ordered:
         result.extend(
-            _solve_segment(left, right, positions_right, prev_i + 1, i, prev_j + 1, j)
+            _solve_segment(
+                left, right, positions_right, prev_i + 1, i, prev_j + 1, j, forbidden_set
+            )
         )
         result.append((i, j))
         prev_i, prev_j = i, j
@@ -210,6 +268,7 @@ def solve(
             len(left),
             prev_j + 1,
             len(right),
+            forbidden_set,
         )
     )
     return result
